@@ -1,0 +1,2 @@
+source ./activate
+cd ./threads

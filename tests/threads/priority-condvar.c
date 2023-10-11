@@ -24,7 +24,7 @@ test_priority_condvar (void)
   lock_init (&lock);
   cond_init (&condition);
 
-  thread_set_priority (PRI_MIN);
+  thread_set_priority (0);
   for (i = 0; i < 10; i++) 
     {
       int priority = PRI_DEFAULT - (i + 7) % 10 - 1;
@@ -32,7 +32,6 @@ test_priority_condvar (void)
       snprintf (name, sizeof name, "priority %d", priority);
       thread_create (name, priority, priority_condvar_thread, NULL);
     }
-
   for (i = 0; i < 10; i++) 
     {
       lock_acquire (&lock);

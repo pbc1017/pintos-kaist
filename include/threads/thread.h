@@ -28,6 +28,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define NESTED_DONATION_MAX 8
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -95,6 +97,19 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	int64_t wakeup_tick;
+
+	int initial_priority;
+
+	struct lock *waiting_lock;
+	struct list donator_list;
+	struct list_elem donator_elem;
+
+	struct list_elem active_elem;
+
+	int recent_cpu;
+	int nice;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -142,5 +157,18 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+void update_next_wakeup(int64_t ticks);
+int64_t get_next_wakeup(void);
+void sleep_until (int64_t ticks);
+void awake_threads(int64_t ticks);
+
+bool cmp_thread_priority (const struct list_elem *x, const struct list_elem *y, void *aux UNUSED);
+bool test_priority (void);
+
+bool cmp_donator_priority(const struct list_elem *x, const struct list_elem *y, void *aux UNUSED);
+void donate_priority(void);
+void remove_donators_for(struct lock *lock);
+void update_priority (void);
 
 #endif /* threads/thread.h */
