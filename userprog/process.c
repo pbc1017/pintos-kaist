@@ -164,6 +164,18 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
+	char *parsing, *save;
+	int i, argc = 0;
+	char *argv[64];
+
+	parsing = strtok_r(f_name, " ", &save);
+	argv[argc] = parsing;
+
+	while (parsing) {
+		parsing = strtok_r(NULL, " ", &save);
+		argc = argc + 1;
+		argv[argc] = parsing;
+	}
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -177,15 +189,44 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (argv[0], &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
 	if (!success)
 		return -1;
 
+	int arg_len = 0;
+	char *arg_addr[64];
+	
+	for (i = argc -1; i >= 0; i--) {
+		int len = strlen(argv[i]) + 1;
+		arg_len = arg_len + len;
+		_if.rsp = _if.rsp - len;
+		memcpy(_if.rsp, argv[i], len);
+		arg_addr[i] = _if.rsp;
+	}
+
+	if ((arg_len % 8) != 0) {
+		_if.rsp = (char *)_if.rsp - 8 + (arg_len % 8);
+		*(uint8_t *) _if.rsp = 0;
+	}
+
+	_if.rsp = _if.rsp - 8;
+	memset(_if.rsp, 0, sizeof(char **));
+	for (i = argc -1; i >= 0; i--) {
+		_if.rsp = _if.rsp - 8;
+		memcpy(_if.rsp, &arg_addr[i], sizeof(char **));
+	}
+
+	_if.rsp = _if.rsp - 8;
+	memset(_if.rsp, 0, sizeof(void *));
+
+	_if.R.rdi = argc;
+	_if.R.rsi = _if.rsp + 8;
+
 	/* Start switched process. */
 	do_iret (&_if);
+	palloc_free_page (file_name);
 	NOT_REACHED ();
 }
 

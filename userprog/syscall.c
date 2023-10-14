@@ -8,6 +8,12 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 
+#include "threads/init.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "devices/input.h"
+#include <string.h>
+#include "userprog/process.h"
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -43,4 +49,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
 	printf ("system call!\n");
 	thread_exit ();
+}
+
+void check_address (void *addr) {
+	if (!is_user_vaddr(addr))
+		SyS_exit(-1);
+}
+
+void SyS_exit (int status) {
+	struct thread *t = thread_current();
+	t->exit_status = status;
+
+	printf("%s: exit(%d)\n", t->name, status); 
+	thread_exit();
 }
