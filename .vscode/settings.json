@@ -1,6 +1,7 @@
 {
   "files.associations": {
     "process.h": "c",
-    "thread.h": "c"
+    "thread.h": "c",
+    "inode.h": "c"
   }
 }
