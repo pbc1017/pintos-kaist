@@ -14,6 +14,9 @@
 #include "devices/input.h"
 #include <string.h>
 #include "userprog/process.h"
+#ifdef VM
+#include "vm/file.h"
+#endif
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -112,6 +115,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_TELL:
 			f->R.rax = SyS_tell(f->R.rdi);
 			break;
+#ifdef VM
+		case SYS_MMAP:
+			f->R.rax = SyS_mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+			break;
+		case SYS_MUNMAP:
+			SyS_munmap(f->R.rdi);
+			break;
+#endif
 		default:
 			printf ("system call!\n");
 			thread_exit ();
@@ -264,6 +275,12 @@ int SyS_read (int fd, void *buffer, unsigned size) {
 	} else {
 		struct file *fd_file = fd_to_file(fd);
 
+		#ifdef VM
+		if (spt_find_page(&thread_current()->spt, buffer) != NULL
+			&& spt_find_page(&thread_current()->spt, buffer)->writable == 0)
+			SyS_exit(-1);
+		#endif
+
 		if (fd_file != NULL) {
 			lock_acquire(&syscall_lock);
 			count = file_read(fd_file, buffer, size);
@@ -338,3 +355,49 @@ void SyS_close (int fd) {
 	}
 
 }
+
+#ifdef VM
+void *SyS_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+	if ( is_kernel_vaddr(addr) )
+		return NULL;
+
+	if (addr == NULL || (pg_round_down(addr)!= addr))
+		return NULL;
+
+	if (length <= 0 || length >= KERN_BASE)
+		return NULL;
+
+	if (fd <= 1)
+		return NULL;
+
+	if (pg_round_down(offset) != offset)
+		return NULL;
+
+	struct file *fd_file = fd_to_file(fd);
+	if (fd_file == NULL)
+		return NULL;
+
+	if (file_length(fd_file) == 0 || file_length(fd_file) <= offset)
+		return NULL;
+
+	return do_mmap(addr, length, writable, fd_file, offset);
+}
+
+void SyS_munmap (void *addr) {
+	if (pg_round_down(addr) != addr)
+		return;
+
+	struct page *page = spt_find_page(&thread_current()->spt, addr);
+
+	if (page == NULL)
+		return;
+
+	if (page->operations->type != VM_FILE)
+		return;
+
+	if (!page->file.is_first_page)
+		return;
+
+	do_munmap(addr);
+}
+#endif

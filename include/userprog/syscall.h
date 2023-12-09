@@ -32,4 +32,9 @@ void SyS_seek (int fd, unsigned position);
 unsigned SyS_tell (int fd);
 void SyS_close (int fd);
 
+#ifdef VM
+void *SyS_mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void SyS_munmap (void *addr);
+#endif
+
 #endif /* userprog/syscall.h */
