@@ -224,6 +224,10 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	#ifdef VM
+		supplemental_page_table_init(&thread_current()->spt);
+	#endif
+
 	/* And then load the binary */
 	success = load (argv[0], &_if);
 
@@ -262,7 +266,7 @@ process_exec (void *f_name) {
 
 	/* Start switched process. */
 	do_iret (&_if);
-	palloc_free_page (file_name);
+	palloc_free_page (f_name);
 	NOT_REACHED ();
 }
 
@@ -454,6 +458,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+	t->running_file = file;
+	file_deny_write(file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -534,7 +540,9 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	if (file != thread_current()->running_file)
+		file_close (file);
+
 	return success;
 }
 
@@ -692,6 +700,20 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	uint8_t *pa = (page->frame)->kva;
+	struct page_load_info *args = aux;
+	uint32_t read_bytes = args->read_bytes;
+
+	file_seek(args->file, args->ofs);
+	uint32_t real_read_bytes = (uint32_t) file_read(args->file, pa, read_bytes);
+
+	if (real_read_bytes != read_bytes) {
+		palloc_free_page(pa);
+		return false;
+	} else {
+		memset(pa+read_bytes, 0, args->zero_bytes);
+		return true;
+	}
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -723,7 +745,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		struct page_load_info *aux = (struct page_load_info *) malloc(sizeof(struct page_load_info));
+		aux->file = file;
+		aux->ofs = ofs;
+		aux->read_bytes = page_read_bytes;
+		aux->zero_bytes = page_zero_bytes;
+
+		ofs += page_read_bytes;
+
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
 					writable, lazy_load_segment, aux))
 			return false;
@@ -746,6 +775,23 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+	bool alloc_succ = vm_alloc_page(VM_ANON|VM_MARKER_0, stack_bottom, true);
+	if (!alloc_succ) {
+		struct page *fail_page = spt_find_page(&thread_current()->spt, stack_bottom);
+		palloc_free_page(fail_page);
+		return false;
+	}
+
+	bool claim_succ = vm_claim_page(stack_bottom);
+	if (!claim_succ){
+		struct page *fail_page = spt_find_page(&thread_current()->spt, stack_bottom);
+		palloc_free_page(fail_page);
+		return false;
+	}
+
+	memset(stack_bottom, 0, PGSIZE);
+	success = true;
+	if_->rsp = USER_STACK;
 
 	return success;
 }
