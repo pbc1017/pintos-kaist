@@ -3,6 +3,10 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include <hash.h>
+#include "threads/vaddr.h"
+
+struct list victim_list;
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -63,20 +67,25 @@ err:
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
 	/* TODO: Fill this function. */
+	struct page p;
 
-	return page;
+	p.va = pg_round_down(va);
+	struct hash_elem *e = hash_find(&thread_current()->spt.page_map, &p.spt_elem);
+
+	if (e == NULL) {
+		return NULL;
+	} else {
+		return hash_entry(e, struct page, spt_elem);
+	}
 }
 
 /* Insert PAGE into spt with validation. */
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
-	int succ = false;
 	/* TODO: Fill this function. */
-
-	return succ;
+	return hash_insert(&spt->page_map, &page->spt_elem) == NULL;
 }
 
 void
@@ -110,11 +119,19 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
+	void *new = palloc_get_page(PAL_USER);
 
+	if (new == NULL) {
+		return vm_evict_frame();
+	}
+
+	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
 	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
+
+	frame->page = NULL;
+	frame->kva = new;
+
 	return frame;
 }
 
@@ -153,6 +170,11 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
+	page = spt_find_page(&thread_current()->spt, va);
+
+	if (page == NULL) {
+		return false;
+	}
 
 	return vm_do_claim_page (page);
 }
@@ -162,11 +184,23 @@ static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
 
+	if (frame == NULL) {
+		printf("frame is NULL\n");
+		return false;
+	}
+
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
+	ASSERT(thread_current() == page->owner);
+
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	if (!pml4_set_page(page->owner->pml4, page->va, frame->kva, page->writable)) {
+		return false;
+	}
+	
+	list_push_back(&victim_list, &page->victim_list_elem);
 
 	return swap_in (page, frame->kva);
 }
@@ -174,6 +208,7 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	hash_init(&spt->page_map, page_hash_func, cmp_page_hash, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
@@ -187,4 +222,18 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+uint64_t
+page_hash_func (const struct hash_elem *e, void *aux){
+	const struct page *p = hash_entry(e, struct page, spt_elem);
+	return hash_bytes(&p->va, sizeof(p->va));
+}
+
+bool
+cmp_page_hash (const struct hash_elem *x, const struct hash_elem *y, void *aux){
+	struct page *p_x = hash_entry(x, struct page, spt_elem);
+	struct page *p_y = hash_entry(y, struct page, spt_elem);
+
+	return p_x->va < p_y->va;
 }
