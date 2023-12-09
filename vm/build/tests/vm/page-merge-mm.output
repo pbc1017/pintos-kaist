@@ -29,8 +29,8 @@ system call!
 (page-merge-mm) wait for child 0: FAILED
 page-merge-mm: exit(1)
 Execution of 'page-merge-mm' complete.
-Timer: 226 ticks
-Thread: 48 idle ticks, 50 kernel ticks, 128 user ticks
+Timer: 242 ticks
+Thread: 57 idle ticks, 53 kernel ticks, 132 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 430 reads, 4678 writes
 hd1:0: 224 reads, 0 writes

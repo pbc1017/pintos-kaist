@@ -15,15 +15,17 @@ Putting 'mmap-off' into the file system...
 Putting 'large.txt' into the file system...
 Executing 'mmap-off':
 (mmap-off) begin
-mmap-off: exit(-1)
+(mmap-off) open "large.txt"
+(mmap-off) try to mmap with offset 0x1000
+system call!
 Execution of 'mmap-off' complete.
-Timer: 279 ticks
-Thread: 111 idle ticks, 165 kernel ticks, 3 user ticks
+Timer: 297 ticks
+Thread: 140 idle ticks, 154 kernel ticks, 3 user ticks
 hd0:0: 0 reads, 0 writes
-hd0:1: 108 reads, 15904 writes
+hd0:1: 112 reads, 15904 writes
 hd1:0: 7933 reads, 0 writes
 hd1:1: 0 reads, 0 writes
-Console: 991 characters output
+Console: 1055 characters output
 Keyboard: 0 keys pressed
 Exception: 0 page faults
 Powering off...
