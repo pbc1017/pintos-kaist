@@ -23,6 +23,7 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
+	list_init(&victim_list);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -126,17 +127,41 @@ vm_get_victim (void) {
 	struct frame *victim = NULL;
 	 /* TODO: The policy for eviction is up to you. */
 
-	return victim;
+	 struct list_elem *victim_iter = list_front(&victim_list);
+
+	 while (1){
+			struct page *victim_page = list_entry (victim_iter, struct page, victim_list_elem);
+			void *victim_addr = victim_page->va;
+			struct thread* victim_owner = victim_page->owner;
+
+			if (!pml4_is_accessed(&victim_owner->pml4, victim_addr)) {
+				list_remove(victim_iter);
+				return victim_page->frame;
+			} else {
+				pml4_set_accessed(&victim_owner->pml4, victim_addr, 0);
+				victim_iter = list_next(victim_iter);
+
+				if (victim_iter == list_end(&victim_list)) {
+					victim_iter = list_front(&victim_list);
+				}
+			}
+	 }
+
+	PANIC("unreachable: vm_get_victim");
 }
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
+	if (!swap_out(victim->page)) {
+		return NULL;
+	}
 
-	return NULL;
+	victim->page = NULL;
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -149,8 +174,7 @@ vm_get_frame (void) {
 	void *new = palloc_get_page(PAL_USER);
 
 	if (new == NULL) {
-		// return vm_evict_frame();
-		PANIC("todo");
+		return vm_evict_frame();
 	}
 
 	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
@@ -177,11 +201,6 @@ vm_stack_growth (void *addr) {
 			PANIC("alloc & claim failed in vm_stack_growth");
 		}
 	}
-}
-
-/* Handle the fault on write_protected page */
-static bool
-vm_handle_wp (struct page *page UNUSED) {
 }
 
 /* Return true on success */
@@ -267,6 +286,8 @@ vm_do_claim_page (struct page *page) {
 	if (!pml4_set_page(page->owner->pml4, page->va, frame->kva, page->writable)) {
 		return false;
 	}
+	
+	list_push_back(&victim_list, &page->victim_list_elem);
 
 	return swap_in (page, frame->kva);
 }

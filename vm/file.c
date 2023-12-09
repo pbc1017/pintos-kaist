@@ -43,13 +43,34 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 /* Swap in the page by read contents from the file. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	struct page_load_info *aux = (struct page_load_info *) malloc (sizeof(struct page_load_info));
+	
+	aux->file = file_page->file;
+	aux->is_first_page = file_page->is_first_page;
+	aux->num_left_page = file_page->num_left_page;
+	aux->ofs = file_page->ofs;
+	aux->read_bytes = file_page->read_bytes;
+	aux->zero_bytes = file_page->zero_bytes;
+
+	return file_lazy_load(page, (void *) aux);
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	uint64_t *curr_pml4 = page->owner->pml4;
+	
+	if (pml4_is_dirty(curr_pml4, page->va)) {
+		file_seek(file_page->file, file_page->ofs);
+		file_write(file_page->file, page->va, file_page->read_bytes);
+		pml4_set_dirty(curr_pml4, page->va, 0);
+	} 
+	pml4_clear_page(curr_pml4, page->va);
+	page->frame = NULL;
+
+	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
